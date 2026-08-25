@@ -63,6 +63,9 @@ Things you set in the JSON (no GUI yet):
   SHIFTMAP inpainting when `opencv-contrib-python-headless` is installed (it is in the exe), a built-in
   exemplar fill otherwise. `"extend": 10` additionally clones a limb a few px past its cut line so a
   bent torso shows no straight edge (off by default - on a strap-covered arm it clones the strap).
+* Seam healing: every frame, the cut edge of each rotated part (and of a flipped region) is blended
+  with a thin Telea inpaint band, so the neck line / belt line / neck of a turned head do not show as
+  hard cuts. `"heal_seams": false` turns it off.
 * AI exports with a fake checkerboard background: `python examples/strip_checker.py in.png out.png`
   turns the checker into real transparency (keeps white flowers, blades, eyes).
 

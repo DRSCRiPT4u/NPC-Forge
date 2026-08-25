@@ -100,6 +100,9 @@ class Rig:
         for w in self.wags:                            # a child limb (blade in a hand) is not part of its parent's layer
             if w['parent'] is not None:
                 self.wags[int(w['parent'])]['mask'] &= ~w['core']
+        for w in self.wags:                            # the cut edge: core pixels touching the rest of the drawing
+            edge = w['core'] & self._grow(self.solid & ~w['core'], 1)
+            w['edge'] = Image.fromarray(edge.astype(np.uint8) * 255, 'L')
 
         # flip regions: drawn mirrored (about their own centre) during given frames - a head turning to look back
         self.flips = []
@@ -110,7 +113,11 @@ class Rig:
             normal = Image.fromarray(np.where(m[:, :, None], self.arr, 0).astype(np.uint8), 'RGBA')
             mirrored = Image.new('RGBA', (self.W, self.H), (0, 0, 0, 0))
             mirrored.paste(normal.crop((x0, y0, x1, y1)).transpose(Image.FLIP_LEFT_RIGHT), (x0, y0))
-            self.flips.append({'normal': normal, 'mirrored': mirrored, 'frames': fl.get('frames') or [], 'speak': bool(fl.get('speak', True))})
+            edge = m & self._grow(self.solid & ~m, 1)
+            em = Image.new('L', (self.W, self.H), 0)
+            em.paste(Image.fromarray(edge.astype(np.uint8) * 255, 'L').crop((x0, y0, x1, y1)).transpose(Image.FLIP_LEFT_RIGHT), (x0, y0))
+            self.flips.append({'normal': normal, 'mirrored': mirrored, 'frames': fl.get('frames') or [], 'speak': bool(fl.get('speak', True)),
+                               'edge_mirrored': np.array(em) > 0})
             body &= ~m; cut |= m
 
         self.body_arr = np.zeros_like(self.arr); self.body_arr[body] = self.arr[body]
@@ -201,12 +208,14 @@ class Rig:
             valid = np.array(Image.fromarray(known.astype(np.uint8) * 255).filter(ImageFilter.MinFilter(patch))) > 0
         return arr
 
-    def _inpaint(self, arr, target, source, margin=28):
+    def _inpaint(self, arr, target, source, margin=28, method='shiftmap', source_radius=None):
         """Continue the drawing into `target` using only `source` pixels as material. OpenCV's SHIFTMAP
         (patch based, contrib module) when available - it behaves like an automatic clone stamp - else the
         built-in exemplar fill. arr (HxWx4 uint8) is modified in place."""
         if not target.any():
             return arr
+        if source_radius:                                                        # only borrow from nearby pixels
+            source = source & self._grow(target, source_radius)
         try:
             import cv2
             ys, xs = np.where(target)
@@ -216,7 +225,11 @@ class Rig:
             valid = (source & ~target)[y0:y1, x0:x1]
             mask = np.where(valid, 255, 0).astype(np.uint8)                          # 0 = inpaint (target + everything else)
             dst = np.zeros_like(src)
-            cv2.xphoto.inpaint(src, mask, dst, cv2.xphoto.INPAINT_SHIFTMAP)
+            if method == 'telea':                                                # smooth bridge - for thin seams
+                tmask = np.where(target[y0:y1, x0:x1], 255, 0).astype(np.uint8)
+                dst = cv2.inpaint(src, tmask, 3, cv2.INPAINT_TELEA)
+            else:
+                cv2.xphoto.inpaint(src, mask, dst, cv2.xphoto.INPAINT_SHIFTMAP)
             t = target[y0:y1, x0:x1]
             sub = arr[y0:y1, x0:x1]
             sub[t, :3] = dst[t][:, ::-1]; sub[t, 3] = 255
@@ -254,7 +267,7 @@ class Rig:
         closed = np.array(m.filter(ImageFilter.MaxFilter(2 * radius + 1)).filter(ImageFilter.MinFilter(2 * radius + 1))) > 0
         hole = closed & ~body & cut
         if not hole.any(): return
-        self._inpaint(self.body_arr, hole, body)                    # continue the body drawing into the hole
+        self._inpaint(self.body_arr, hole, body, source_radius=16)  # continue the body drawing into the hole
 
     def _clip(self, b):
         x0, y0, x1, y1 = [int(round(v)) for v in b]
@@ -401,19 +414,25 @@ class Rig:
             return out
 
         limbs = []
+        bands = np.zeros((self.H, self.W), bool)         # seam bands to heal in this frame
         for i, w in enumerate(self.wags):
             total = abs(angles[i]) + sum(abs(angles[p]) for p in chain(i))
             layer = self.layers_wag_ext[i] if (total > 5 and self.layers_wag_ext[i] is not None) else self.layers_wag[i]
             if self.mouth_owner == i and mouth != 'closed':
                 layer = self.mouths.get(mouth, layer)
+            edge = w['edge']
             pivot = w['pivot']
             for p in chain(i):                           # carry the child along with every ancestor's rotation
                 pp = self.wags[p]['pivot']
                 layer = layer.rotate(angles[p], resample=Image.NEAREST, center=pp)
+                edge = edge.rotate(angles[p], resample=Image.NEAREST, center=pp)
                 pivot = rot_point(pivot, angles[p], pp)
             layer = layer.rotate(angles[i], resample=Image.NEAREST, center=pivot)
+            edge = edge.rotate(angles[i], resample=Image.NEAREST, center=pivot)
             if w['clip_below'] is not None:              # e.g. the ground line: a blade stuck in the floor
                 arr = np.array(layer); arr[int(w['clip_below']):] = 0; layer = Image.fromarray(arr, 'RGBA')
+            if total > 2:
+                bands |= self._grow(np.array(edge) > 0, 2)
             limbs.append((w['behind'], layer))
         for behind, L in limbs:
             if behind: f.alpha_composite(L)
@@ -421,12 +440,18 @@ class Rig:
         for fl in self.flips:
             on = fl['speak'] if speak else any(a <= k <= b for a, b in fl['frames'])
             f.alpha_composite(fl['mirrored'] if on else fl['normal'])
+            if on: bands |= self._grow(fl['edge_mirrored'], 2)
         if blink and self.blink_layer is not None:
             f.alpha_composite(self.blink_layer)
         for behind, L in limbs:
             if not behind: f.alpha_composite(L)
         for i, L in enumerate(self.layers_sway):
             f.alpha_composite(self.sway(i, L, phase))
+        if bands.any() and self.cfg.get('heal_seams', True):   # clone-stamp along the moved cut edges
+            fa = np.array(f); opaque = fa[:, :, 3] > 0
+            target = bands & opaque
+            self._inpaint(fa, target, opaque & ~target, margin=16, method='telea')
+            f = Image.fromarray(fa, 'RGBA')
         return f
 
     def _blink_frames(self, n, anim):
