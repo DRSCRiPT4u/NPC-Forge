@@ -56,6 +56,12 @@ Things you set in the JSON (no GUI yet):
   stab `[[0,0],[5,85],[8,88],[14,88],[19,0]]` (smooth in-between, loops).
 * `"parent": 0` on a limb: a two-bone limb - the blade rides in the hand of limb 0 and adds its own
   rotation around its own pivot. `"clip_below": 1132` hides whatever goes under the ground line.
+* `"flip": [{"box"/"poly": ..., "frames": [[5, 31]]}]`: the region is drawn mirrored during those frames -
+  a wolf turning its head to look back at its owner (`examples/wolf_ranger.json`).
+* Holes a moving part leaves in the body are "continued" automatically, clone-stamp style: OpenCV's
+  SHIFTMAP inpainting when `opencv-contrib-python-headless` is installed (it is in the exe), a built-in
+  exemplar fill otherwise. `"extend": 10` additionally clones a limb a few px past its cut line so a
+  bent torso shows no straight edge (off by default - on a strap-covered arm it clones the strap).
 * AI exports with a fake checkerboard background: `python examples/strip_checker.py in.png out.png`
   turns the checker into real transparency (keeps white flowers, blades, eyes).
 
@@ -112,6 +118,13 @@ The GUI uses the MapleStory-style kit in `theme/` (MapleUI fonts, v83 UI pieces,
 corner). UI design by **wisteria**, shipped with GodlyPac's WZ Mod Builder; the chrome pieces under
 `theme/mf` come from the Mob-Factory project. See `theme/README.md` and keep the credit intact.
 The fonts are loaded process-privately (nothing gets installed on your system).
+
+## What it cannot do
+
+Cut-out animation moves the pixels that are there. A pose that needs pixels the still does not have -
+an arm that is folded against the torso reaching out to pet a wolf, a face turning to a new angle -
+cannot be invented; you get a rotated block of torso texture instead. For those, draw (or generate)
+a second still in the target pose; the rig can then switch between stills.
 
 ## Tips from the first NPC (LEEK)
 

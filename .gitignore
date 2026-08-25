@@ -10,5 +10,3 @@ __pycache__/
 *.spec.bak
 # generated per-example output
 examples/*_out/
-# work in progress
-examples/wolf_ranger*

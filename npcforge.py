@@ -94,7 +94,8 @@ class Rig:
                               'speak_angles': list(w.get('speak_angles', w.get('angles', [0, 6]))),
                               'speak_speed': float(w.get('speak_speed', 2)),
                               'keyframes': w.get('keyframes'), 'speak_keyframes': w.get('speak_keyframes'),
-                              'parent': w.get('parent'), 'clip_below': w.get('clip_below'), 'box': box, 'core': core})
+                              'parent': w.get('parent'), 'clip_below': w.get('clip_below'), 'box': box, 'core': core,
+                              'extend': w.get('extend')})
             body &= ~core
         for w in self.wags:                            # a child limb (blade in a hand) is not part of its parent's layer
             if w['parent'] is not None:
@@ -120,6 +121,8 @@ class Rig:
         self.body = Image.fromarray(self.body_arr, 'RGBA')
         self.layers_sway = [Image.fromarray(np.where(s['mask'][:, :, None], self.arr, 0).astype(np.uint8), 'RGBA') for s in self.sways]
         self.layers_wag = [Image.fromarray(np.where(w['mask'][:, :, None], self.arr, 0).astype(np.uint8), 'RGBA') for w in self.wags]
+        self.layers_wag_ext = [self._extend_limb(i) for i in range(len(self.wags))]
+        self.mouth_owner = None
         self.mouths = self._mouth_variants(cfg['mouth']) if cfg['mouth'] else {'closed': self.body}
         self.blink_layer = self._blink_layer(cfg['blink']) if cfg.get('blink') else None
 
@@ -162,6 +165,86 @@ class Rig:
         if not len(ys): return [0, 0, 1, 1]
         return [int(xs[0]), int(ys[0]), int(xs[-1]) + 1, int(ys[-1]) + 1]
 
+    def _clone_fill(self, arr, target, source, patch=7, radius=40, stride=2):
+        """Clone-stamp style inpainting (exemplar based): every missing pixel is filled from the centre of the
+        best-matching known patch nearby, working inward from the edge of the hole. arr is modified in place.
+        target = pixels to fill, source = pixels that may be copied from."""
+        target = target.copy(); known = source.copy() & ~target
+        r = patch // 2
+        H, W = target.shape
+        pad = np.pad(arr[:, :, :3].astype(np.int16), ((r, r), (r, r), (0, 0)), mode='edge')
+        kpad = np.pad(known, r, mode='constant')
+        win = np.lib.stride_tricks.sliding_window_view(pad, (patch, patch), axis=(0, 1))       # H,W,3,p,p
+        kwin = np.lib.stride_tricks.sliding_window_view(kpad, (patch, patch))                  # H,W,p,p
+        valid = np.array(Image.fromarray(known.astype(np.uint8) * 255).filter(ImageFilter.MinFilter(patch))) > 0  # full patch known
+        for _ in range(4000):
+            if not target.any(): break
+            ring = target & (np.array(Image.fromarray(known.astype(np.uint8) * 255).filter(ImageFilter.MaxFilter(3))) > 0)
+            if not ring.any(): break
+            ys, xs = np.where(ring)
+            for y, x in zip(ys, xs):
+                y0, y1 = max(0, y - radius), min(H, y + radius + 1); x0, x1 = max(0, x - radius), min(W, x + radius + 1)
+                cand = valid[y0:y1:stride, x0:x1:stride]
+                cy, cx = np.where(cand)
+                if not len(cy):
+                    continue
+                cy = cy * stride + y0; cx = cx * stride + x0
+                tp = win[y, x].transpose(1, 2, 0); tk = kwin[y, x]                 # p,p,3 and p,p
+                if not tk.any():
+                    continue
+                cps = win[cy, cx].transpose(0, 2, 3, 1)                             # n,p,p,3
+                d = ((cps - tp) ** 2).sum(axis=3) * tk                              # n,p,p
+                best = np.argmin(d.sum(axis=(1, 2)))
+                arr[y, x, :3] = arr[cy[best], cx[best], :3]; arr[y, x, 3] = 255
+                pad[y + r, x + r] = arr[y, x, :3]
+                known[y, x] = True; kpad[y + r, x + r] = True; target[y, x] = False
+            valid = np.array(Image.fromarray(known.astype(np.uint8) * 255).filter(ImageFilter.MinFilter(patch))) > 0
+        return arr
+
+    def _inpaint(self, arr, target, source, margin=28):
+        """Continue the drawing into `target` using only `source` pixels as material. OpenCV's SHIFTMAP
+        (patch based, contrib module) when available - it behaves like an automatic clone stamp - else the
+        built-in exemplar fill. arr (HxWx4 uint8) is modified in place."""
+        if not target.any():
+            return arr
+        try:
+            import cv2
+            ys, xs = np.where(target)
+            y0, y1 = max(0, ys.min() - margin), min(self.H, ys.max() + margin + 1)
+            x0, x1 = max(0, xs.min() - margin), min(self.W, xs.max() + margin + 1)
+            src = np.ascontiguousarray(arr[y0:y1, x0:x1, :3][:, :, ::-1])            # BGR for OpenCV
+            valid = (source & ~target)[y0:y1, x0:x1]
+            mask = np.where(valid, 255, 0).astype(np.uint8)                          # 0 = inpaint (target + everything else)
+            dst = np.zeros_like(src)
+            cv2.xphoto.inpaint(src, mask, dst, cv2.xphoto.INPAINT_SHIFTMAP)
+            t = target[y0:y1, x0:x1]
+            sub = arr[y0:y1, x0:x1]
+            sub[t, :3] = dst[t][:, ::-1]; sub[t, 3] = 255
+            return arr
+        except Exception as ex:                                                       # no cv2 / contrib -> own clone fill
+            if not getattr(self, '_warned_cv2', False):
+                print(f'(inpaint: OpenCV shiftmap unavailable - {type(ex).__name__}; using built-in clone fill)'); self._warned_cv2 = True
+            return self._clone_fill(arr, target, source)
+
+    def _extend_limb(self, i):
+        """Clone-stamp the limb a few px past its cut line (into where the body was) so a rotated limb shows
+        no straight edge at the joint. Used only while the limb is actually rotated (see compose)."""
+        w = self.wags[i]
+        ext = w.get('extend')                                    # opt-in, per limb or global: clone the limb past its cut
+        ext = int(self.cfg.get('extend', 0) if ext is None else ext)
+        if ext <= 0: return None
+        tgt = self._grow(w['core'], ext) & self.solid & ~w['core']
+        for j, o in enumerate(self.wags):
+            if j != i: tgt &= ~o['core']
+        for s in self.sways: tgt &= ~s['mask']
+        if not tgt.any(): return None
+        a = np.where(w['mask'][:, :, None], self.arr, 0).astype(np.uint8)
+        self._inpaint(a, tgt, w['core'])
+        return Image.fromarray(a, 'RGBA')
+
+    def _grow(self, mask, n):
+        return np.array(Image.fromarray(mask.astype(np.uint8) * 255).filter(ImageFilter.MaxFilter(2 * int(n) + 1))) > 0
+
     def _fill_holes(self, body, cut, radius=None, steps=120):
         radius = int(radius or self.cfg.get("fill_radius", 24))
         """A limb cut out of the body leaves a hole where the limb overlapped the torso. Fill the part of
@@ -171,16 +254,7 @@ class Rig:
         closed = np.array(m.filter(ImageFilter.MaxFilter(2 * radius + 1)).filter(ImageFilter.MinFilter(2 * radius + 1))) > 0
         hole = closed & ~body & cut
         if not hole.any(): return
-        filled = body.copy(); col = self.body_arr
-        for _ in range(steps):
-            grew = False
-            for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
-                src = np.roll(filled, (dy, dx), axis=(0, 1))
-                cand = hole & ~filled & src
-                if cand.any():
-                    col[cand] = np.roll(col, (dy, dx), axis=(0, 1))[cand]; filled |= cand; grew = True
-            if not grew: break
-        self.body_arr = col
+        self._inpaint(self.body_arr, hole, body)                    # continue the body drawing into the hole
 
     def _clip(self, b):
         x0, y0, x1, y1 = [int(round(v)) for v in b]
@@ -212,13 +286,21 @@ class Rig:
     def _mouth_variants(self, m):
         box = self._clip(m['box']); cell = int(m.get('cell', 10))
         x0, y0, x1, y1 = box
+        # the mouth lives on whichever layer holds its centre pixel (a tilting head is a limb, not the body)
+        self.mouth_owner = None; base = self.body
+        for i, w in enumerate(self.wags):
+            if w['mask'][(y0 + y1) // 2, (x0 + x1) // 2]:
+                self.mouth_owner = i; base = self.layers_wag[i]; break
         inside = self.arr[y0:y1, x0:x1].reshape(-1, 4)
         inside = inside[inside[:, 3] > 0]
-        ring = self._inbox(self._clip([x0 - 8, y0 - 8, x1 + 8, y1 + 8])) & ~self._inbox(box) & self.solid
-        ringpx = self.arr[ring]
-        face = tuple(int(v) for v in self._mode(ringpx)) if len(ringpx) else (255, 255, 255, 255)
-        far = inside[np.abs(inside[:, :3].astype(int) - np.array(face[:3])).sum(axis=1) > 90]
-        mouth = tuple(int(v) for v in self._mode(far)) if len(far) else (40, 40, 40, 255)
+        # background of the mouth area = the lighter majority inside the box (skin, or beard on a bearded face);
+        # the mouth stroke = the clearly darker pixels inside it
+        lum = inside[:, :3].astype(int).mean(axis=1) if len(inside) else np.zeros(0)
+        light = inside[lum >= np.median(lum)] if len(inside) else inside
+        face = tuple(int(v) for v in self._mode(light)) if len(light) else (255, 255, 255, 255)
+        far = inside[lum < lum.mean() - 30] if len(inside) else inside
+        mouth = tuple(int(v) for v in np.median(far, axis=0)) if len(far) else tuple(int(v * 0.5) for v in face[:3]) + (255,)
+        mouth = mouth[:3] + (255,)
         inner = tuple(int(v * 0.35) for v in mouth[:3]) + (255,)
         bw, bh = x1 - x0, y1 - y0
         cell = max(3, min(cell, bh // 3))                 # never coarser than a third of the box height
@@ -227,7 +309,7 @@ class Rig:
         def variant(wfrac, hfrac):
             """Open mouth: rounded dark shape on the pixel grid, `wfrac` of the box width, `hfrac` of its height
             (may grow below the box - an open mouth is taller than a closed one). Top edge stays at the box top."""
-            img = self.body.copy(); d = ImageDraw.Draw(img)
+            img = base.copy(); d = ImageDraw.Draw(img)
             d.rectangle((x0, y0, x1 - 1, y1 - 1), fill=face)
             w = max(4, int(round(bw * wfrac / cell))); h = max(3, int(round(bh * hfrac / cell)))
             gx0 = cx - (w * cell) // 2
@@ -240,7 +322,7 @@ class Rig:
                     px, py = gx0 + c * cell, y0 + r * cell
                     d.rectangle((px, py, px + cell - 1, py + cell - 1), fill=mouth if edge else inner)
             return img
-        return {'closed': self.body, 'open1': variant(0.55, 1.0), 'open2': variant(0.75, 1.6)}
+        return {'closed': base, 'open1': variant(0.55, 1.0), 'open2': variant(0.75, 1.6)}
 
     @staticmethod
     def _mode(px):
@@ -320,7 +402,11 @@ class Rig:
 
         limbs = []
         for i, w in enumerate(self.wags):
-            layer = self.layers_wag[i]; pivot = w['pivot']
+            total = abs(angles[i]) + sum(abs(angles[p]) for p in chain(i))
+            layer = self.layers_wag_ext[i] if (total > 5 and self.layers_wag_ext[i] is not None) else self.layers_wag[i]
+            if self.mouth_owner == i and mouth != 'closed':
+                layer = self.mouths.get(mouth, layer)
+            pivot = w['pivot']
             for p in chain(i):                           # carry the child along with every ancestor's rotation
                 pp = self.wags[p]['pivot']
                 layer = layer.rotate(angles[p], resample=Image.NEAREST, center=pp)
@@ -331,7 +417,7 @@ class Rig:
             limbs.append((w['behind'], layer))
         for behind, L in limbs:
             if behind: f.alpha_composite(L)
-        f.alpha_composite(self.mouths.get(mouth, self.body))
+        f.alpha_composite(self.mouths.get(mouth, self.body) if self.mouth_owner is None else self.body)
         for fl in self.flips:
             on = fl['speak'] if speak else any(a <= k <= b for a, b in fl['frames'])
             f.alpha_composite(fl['mirrored'] if on else fl['normal'])

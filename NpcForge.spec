@@ -3,8 +3,8 @@
 # theme/, examples/, README and the json templates are copied NEXT TO the exe by build-exe.bat
 # (the code resolves them from the exe folder), so nothing from there is embedded here.
 a = Analysis(['npcforge.py'], pathex=['.'], binaries=[], datas=[],
-             hiddenimports=['regions_gui', 'theme', 'PIL.ImageTk', 'PIL._tkinter_finder'],
-             hookspath=[], runtime_hooks=[], excludes=['scipy', 'matplotlib', 'pandas'], noarchive=False)
+             hiddenimports=['regions_gui', 'theme', 'PIL.ImageTk', 'PIL._tkinter_finder', 'cv2', 'scipy.ndimage'],
+             hookspath=[], runtime_hooks=[], excludes=['matplotlib', 'pandas'], noarchive=False)
 pyz = PYZ(a.pure)
 gui = EXE(pyz, a.scripts, [], exclude_binaries=True, name='NpcForge', console=False, icon='npcforge.ico',
           upx=False, disable_windowed_traceback=False)
