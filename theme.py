@@ -1,7 +1,7 @@
 """MapleStory-style chrome for tkinter, driven by the `theme/` kit (MapleUI fonts + v83 UI pieces).
 
-Credit: UI kit by 'wisteria' (see theme/README.md) as shipped with GodlyPac's WZ Mod Builder;
-chrome pieces under theme/mf originate from the Mob-Factory project. Keep the credit intact.
+Credit: UI kit designed by 'wisteria', used with permission (see theme/README.md); the chrome pieces
+under theme/mf originate from the Mob-Factory project. Keep the credit intact.
 """
 import ctypes, os, sys
 from pathlib import Path
