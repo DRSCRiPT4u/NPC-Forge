@@ -142,9 +142,10 @@ Backup files your WZ tool leaves behind are moved to `backup_dir/<id>/`. Restart
 ## Look and feel
 
 The GUI uses the MapleStory-style kit in `theme/` (MapleUI fonts, v83 UI pieces, the grass band in the
-corner). UI design by **wisteria**, used with permission; the chrome pieces under `theme/mf` come from
-the **Mob-Factory** project. See `theme/README.md` and keep the credit intact. The fonts are loaded
-process-privately (nothing gets installed on your system).
+corner). UI design by **wisteria**, from the **SoloMapling-wisteria-Wz-Mod-Tool-Suite**, used with
+permission; the chrome pieces under `theme/mf` come from the **Mob-Factory** project. See
+`theme/README.md` and keep the credit intact. The fonts are loaded process-privately (nothing gets
+installed on your system).
 
 ## What it cannot do
 

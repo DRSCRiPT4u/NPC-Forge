@@ -23,7 +23,7 @@ SOFTWARE.
 ---
 The MIT license covers the NpcForge code (npcforge.py, regions_gui.py, theme.py,
 examples/strip_checker.py, build scripts). The UI kit under theme/ is NOT covered:
-it is wisteria's design (see theme/README.md), with chrome pieces from the
-Mob-Factory project and art derived from the MapleStory v83 client UI - keep the
+it is wisteria's design from the SoloMapling-wisteria-Wz-Mod-Tool-Suite
+(see theme/README.md), with chrome pieces from the Mob-Factory project and art derived from the MapleStory v83 client UI - keep the
 credit intact and do not redistribute it as your own. The example stills under
 examples/ are provided for demonstration only.

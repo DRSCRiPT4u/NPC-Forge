@@ -1,7 +1,7 @@
 # MapleStory-style UI kit
 
-UI design by **'wisteria'** - the designer granted full permission and provided the complete source and
-assets for this reskin. Keep the credit intact.
+UI design by **'wisteria'**, from the **SoloMapling-wisteria-Wz-Mod-Tool-Suite** - the designer granted
+full permission and provided the complete source and assets for this reskin. Keep the credit intact.
 
 Origins (per wisteria's own notes):
 - `mf/` - chrome pieces (window frame, buttons, checkboxes, scrollbar, tabs, title bar, window
