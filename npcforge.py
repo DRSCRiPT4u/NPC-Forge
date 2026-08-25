@@ -67,6 +67,7 @@ class Rig:
         self.W, self.H = self.im.size
         self.arr = np.array(self.im)
         self.solid = self.arr[:, :, 3] > 0
+        self._pal = None
         self.ys, self.xs = np.mgrid[0:self.H, 0:self.W]
         body = self.solid.copy()
 
@@ -208,6 +209,30 @@ class Rig:
             valid = np.array(Image.fromarray(known.astype(np.uint8) * 255).filter(ImageFilter.MinFilter(patch))) > 0
         return arr
 
+    def _palette(self):
+        """The colours the artist actually used (sorted by how often they appear)."""
+        if getattr(self, '_pal', None) is None:
+            px = self.arr[self.solid][:, :3].astype(np.int32)
+            vals, counts = np.unique(px, axis=0, return_counts=True)
+            keep = counts >= max(2, len(px) // 20000)          # drop one-off anti-alias specks
+            self._pal = vals[keep] if keep.any() else vals
+        return self._pal
+
+    def _snap_palette(self, arr, mask, chunk=4096):
+        """Re-quantise generated pixels to the original palette - blends/inpaints otherwise introduce colours
+        that were never in the drawing, which is exactly what reads as 'blurry' on pixel art."""
+        if not mask.any() or not self.cfg.get('snap_palette', True):
+            return arr
+        pal = self._palette().astype(np.int32)
+        px = arr[mask][:, :3].astype(np.int32)
+        out = np.empty_like(px)
+        for i in range(0, len(px), chunk):
+            blk = px[i:i + chunk]
+            d = ((blk[:, None, :] - pal[None, :, :]) ** 2).sum(axis=2)
+            out[i:i + chunk] = pal[np.argmin(d, axis=1)]
+        arr[mask, :3] = out.astype(np.uint8)
+        return arr
+
     def _inpaint(self, arr, target, source, margin=28, method='shiftmap', source_radius=None):
         """Continue the drawing into `target` using only `source` pixels as material. OpenCV's SHIFTMAP
         (patch based, contrib module) when available - it behaves like an automatic clone stamp - else the
@@ -233,11 +258,11 @@ class Rig:
             t = target[y0:y1, x0:x1]
             sub = arr[y0:y1, x0:x1]
             sub[t, :3] = dst[t][:, ::-1]; sub[t, 3] = 255
-            return arr
+            return self._snap_palette(arr, target)
         except Exception as ex:                                                       # no cv2 / contrib -> own clone fill
             if not getattr(self, '_warned_cv2', False):
                 print(f'(inpaint: OpenCV shiftmap unavailable - {type(ex).__name__}; using built-in clone fill)'); self._warned_cv2 = True
-            return self._clone_fill(arr, target, source)
+            return self._snap_palette(self._clone_fill(arr, target, source), target)
 
     def _extend_limb(self, i):
         """Clone-stamp the limb a few px past its cut line (into where the body was) so a rotated limb shows
@@ -316,7 +341,7 @@ class Rig:
         mouth = mouth[:3] + (255,)
         inner = tuple(int(v * 0.35) for v in mouth[:3]) + (255,)
         bw, bh = x1 - x0, y1 - y0
-        cell = max(3, min(cell, bh // 3))                 # never coarser than a third of the box height
+        cell = max(1, min(cell, max(1, bh // 3)))          # never coarser than a third of the box height
         cx = (x0 + x1) // 2
 
         def variant(wfrac, hfrac):
@@ -324,7 +349,7 @@ class Rig:
             (may grow below the box - an open mouth is taller than a closed one). Top edge stays at the box top."""
             img = base.copy(); d = ImageDraw.Draw(img)
             d.rectangle((x0, y0, x1 - 1, y1 - 1), fill=face)
-            w = max(4, int(round(bw * wfrac / cell))); h = max(3, int(round(bh * hfrac / cell)))
+            w = max(3, int(round(bw * wfrac / cell))); h = max(2, int(round(bh * hfrac / cell)))
             gx0 = cx - (w * cell) // 2
             for r in range(h):
                 for c in range(w):
@@ -447,11 +472,14 @@ class Rig:
             if not behind: f.alpha_composite(L)
         for i, L in enumerate(self.layers_sway):
             f.alpha_composite(self.sway(i, L, phase))
-        if bands.any() and self.cfg.get('heal_seams', True):   # clone-stamp along the moved cut edges
+        if bands.any() and self.cfg.get('heal_seams', True):
+            # fill ONLY the gaps that actually opened along a moved cut edge - never paint over pixels
+            # that are already drawn (they are the real artwork)
             fa = np.array(f); opaque = fa[:, :, 3] > 0
-            target = bands & opaque
-            self._inpaint(fa, target, opaque & ~target, margin=16, method='telea')
-            f = Image.fromarray(fa, 'RGBA')
+            target = bands & ~opaque & self._grow(opaque, 1)
+            if target.any():
+                self._inpaint(fa, target, opaque, margin=16, source_radius=6)
+                f = Image.fromarray(fa, 'RGBA')
         return f
 
     def _blink_frames(self, n, anim):
