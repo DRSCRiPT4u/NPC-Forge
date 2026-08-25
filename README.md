@@ -24,8 +24,15 @@ mouth for `speak`. Same input, same output, every time.
 * **From source:** Python 3.10+ with `pip install -r requirements.txt` (Pillow, numpy, scipy,
   opencv-contrib-python-headless for the clone-stamp inpainting). tkinter ships with Python on Windows.
   `build-exe.bat` rebuilds the release folder (`dist\NpcForge`) with PyInstaller.
-* Optional: [WzForge](../WzForge) for direct `.img` output, validation and one-shot deploy.
-  Without it you get the XML + PNG frames and import the XML with HaRepacker (File > Import > XML).
+**How the NPC gets into your WZ:** NpcForge always writes a classic **HaRepacker XML** with the frames
+embedded as base64 canvases, plus the frames as loose PNGs. Open your `Npc.wz` in
+[HaRepacker-resurrected](https://github.com/lastbattle/Harepacker-resurrected), right-click the root ->
+*Add* -> *Import* -> *XML*, pick the file, save. That is the whole path, and it needs nothing but
+HaRepacker.
+
+The `npcforge.json` file lets you plug in your own WZ command-line tool to skip that step (write the
+`.img` directly, validate it, copy it into your client and server trees in one command). That is
+optional plumbing for people who already have such a tool - the XML route above is the supported one.
 
 ## 1. Draw the regions
 
@@ -95,12 +102,17 @@ puts the origin at bottom-centre of the feet and writes:
 * `<name>_out/npc/<id>.img.xml` - classic HaRepacker XML with base64 canvases (`info/dc*`, `stand/N`,
   `speak/N`, each canvas with `origin` + `delay`)
 * `<name>_out/npc/png/` - the final frames as PNG, if you prefer to assemble by hand
-* `<name>_out/npc/<id>.img` - only when WzForge is configured (and it is validated: every canvas decoded)
+* `<name>_out/npc/<id>.img` - only if you configured a WZ CLI in `npcforge.json` (it is validated too:
+  every canvas is decoded again after writing)
 
 Size guide: a normal v83 NPC is 60-90 px tall; big "feature" NPCs 130-180. `--scale 0.13` turned a
 1100x1425 source into 132x173.
 
-## 3. Deploy (Mapleonim layout - optional)
+## 3. Deploy straight into your trees (optional, needs your own WZ CLI)
+
+This is how the author ships NPCs to a live server; it expects a WZ command-line tool with `xml-to-img`
+/ `merge` / `raw-replace` / `extract-wz` / `edit-prop` style commands. If you do not have one, stop after
+step 2 and import the XML with HaRepacker - the result is identical.
 
 Copy `npcforge.example.json` to `npcforge.json` and fill in your paths. Then:
 
@@ -120,7 +132,7 @@ fail then):
 4. `--commit`: commits + pushes those server files on `main`; `mirror-vps` copies the same files onto
    the `vps` branch with the usual keep-set check
 
-WzForge's `.bak` files are moved to `backup_dir/<id>/`. Restart the server after adding a new name
+Backup files your WZ tool leaves behind are moved to `backup_dir/<id>/`. Restart the server after adding a name
 (String.wz is read at startup), then `!npc <name>`.
 
 ## Look and feel
