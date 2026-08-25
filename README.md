@@ -1,4 +1,5 @@
 # NpcForge
+<img width="1462" height="975" alt="image" src="https://github.com/user-attachments/assets/b2e015f5-7bb0-4919-aedf-4400c89b3f13" />
 
 Turn **one** character PNG into a living MapleStory NPC: swaying hair, a waving arm, a talking mouth -
 no frame-by-frame drawing. You mark three kinds of regions on the picture, the tool generates the
@@ -120,3 +121,4 @@ The fonts are loaded process-privately (nothing gets installed on your system).
 * Rotate a limb around the middle of the shoulder plate, not around the seam - the cut stays hidden.
 * Poses that need a different silhouette (hand on hip) are best made by mirroring the other arm; that
   is a custom script, see the LEEK notes, not something the boxes can express.
+<img width="3760" height="1128" alt="stand_sheet" src="https://github.com/user-attachments/assets/f7dd50dc-e2f2-41e2-94b4-a017fbc6c803" />
