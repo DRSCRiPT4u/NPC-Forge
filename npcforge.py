@@ -113,11 +113,11 @@ class Rig:
             normal = Image.fromarray(np.where(m[:, :, None], self.arr, 0).astype(np.uint8), 'RGBA')
             mirrored = Image.new('RGBA', (self.W, self.H), (0, 0, 0, 0))
             mirrored.paste(normal.crop((x0, y0, x1, y1)).transpose(Image.FLIP_LEFT_RIGHT), (x0, y0))
+            # the seam of a flipped part is where it meets the rest of the drawing (the neck) - that line does not
+            # move, so the heal band stays there; the mirrored outline itself (the face) must NOT be touched
             edge = m & self._grow(self.solid & ~m, 1)
-            em = Image.new('L', (self.W, self.H), 0)
-            em.paste(Image.fromarray(edge.astype(np.uint8) * 255, 'L').crop((x0, y0, x1, y1)).transpose(Image.FLIP_LEFT_RIGHT), (x0, y0))
             self.flips.append({'normal': normal, 'mirrored': mirrored, 'frames': fl.get('frames') or [], 'speak': bool(fl.get('speak', True)),
-                               'edge_mirrored': np.array(em) > 0})
+                               'edge_mirrored': edge})
             body &= ~m; cut |= m
 
         self.body_arr = np.zeros_like(self.arr); self.body_arr[body] = self.arr[body]
