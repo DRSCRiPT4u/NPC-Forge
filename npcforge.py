@@ -265,11 +265,19 @@ class Rig:
             return self._snap_palette(self._clone_fill(arr, target, source), target)
 
     def _extend_limb(self, i):
-        """Clone-stamp the limb a few px past its cut line (into where the body was) so a rotated limb shows
-        no straight edge at the joint. Used only while the limb is actually rotated (see compose)."""
+        """Clone-stamp the limb past its cut line and keep ONLY that cloned strip as a separate layer. It is
+        drawn BEHIND everything, so it fills the wedge a rotation opens up without ever covering artwork
+        (belts, buckles, straps stay on top). Auto-sized from how far the limb travels."""
         w = self.wags[i]
-        ext = w.get('extend')                                    # opt-in, per limb or global: clone the limb past its cut
-        ext = int(self.cfg.get('extend', 0) if ext is None else ext)
+        ext = w.get('extend')
+        if ext is None: ext = self.cfg.get('extend')
+        if ext is None:                                          # auto: the furthest a cut-edge pixel travels
+            angs = [abs(a) for a in (w['angles'] + w['speak_angles'])]
+            angs += [abs(a) for _, a in (w['keyframes'] or [])] + [abs(a) for _, a in (w['speak_keyframes'] or [])]
+            x0, y0, x1, y1 = w['box']; px, py = w['pivot']
+            reach = max(abs(px - x0), abs(px - x1), abs(py - y0), abs(py - y1))
+            ext = int(min(60, math.ceil(reach * math.radians(max(angs or [0])))) ) + 2
+        ext = int(ext)
         if ext <= 0: return None
         tgt = self._grow(w['core'], ext) & self.solid & ~w['core']
         for j, o in enumerate(self.wags):
@@ -277,7 +285,8 @@ class Rig:
         for s in self.sways: tgt &= ~s['mask']
         if not tgt.any(): return None
         a = np.where(w['mask'][:, :, None], self.arr, 0).astype(np.uint8)
-        self._inpaint(a, tgt, w['core'])
+        self._inpaint(a, tgt, w['core'], source_radius=12)
+        a[~tgt] = 0                                              # keep ONLY the cloned strip
         return Image.fromarray(a, 'RGBA')
 
     def _grow(self, mask, n):
@@ -438,11 +447,11 @@ class Rig:
             while j is not None: out.insert(0, int(j)); j = self.wags[int(j)]['parent']
             return out
 
-        limbs = []
+        limbs, fills = [], []
         bands = np.zeros((self.H, self.W), bool)         # seam bands to heal in this frame
         for i, w in enumerate(self.wags):
             total = abs(angles[i]) + sum(abs(angles[p]) for p in chain(i))
-            layer = self.layers_wag_ext[i] if (total > 5 and self.layers_wag_ext[i] is not None) else self.layers_wag[i]
+            layer = self.layers_wag[i]
             if self.mouth_owner == i and mouth != 'closed':
                 layer = self.mouths.get(mouth, layer)
             edge = w['edge']
@@ -458,7 +467,14 @@ class Rig:
                 arr = np.array(layer); arr[int(w['clip_below']):] = 0; layer = Image.fromarray(arr, 'RGBA')
             if total > 2:
                 bands |= self._grow(np.array(edge) > 0, 2)
+                fill = self.layers_wag_ext[i]
+                if fill is not None:
+                    for p in chain(i): fill = fill.rotate(angles[p], resample=Image.NEAREST, center=self.wags[p]['pivot'])
+                    fill = fill.rotate(angles[i], resample=Image.NEAREST, center=pivot)
+                    fills.append(fill)
             limbs.append((w['behind'], layer))
+        for L in fills:                                   # gap filler: behind everything, covers nothing
+            f.alpha_composite(L)
         for behind, L in limbs:
             if behind: f.alpha_composite(L)
         f.alpha_composite(self.mouths.get(mouth, self.body) if self.mouth_owner is None else self.body)

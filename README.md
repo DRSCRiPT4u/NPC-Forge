@@ -63,6 +63,11 @@ Things you set in the JSON (no GUI yet):
   SHIFTMAP inpainting when `opencv-contrib-python-headless` is installed (it is in the exe), a built-in
   exemplar fill otherwise. `"extend": 10` additionally clones a limb a few px past its cut line so a
   bent torso shows no straight edge (off by default - on a strap-covered arm it clones the strap).
+* **A part that rotates over detailed artwork should be drawn behind it.** Set `"behind": true` and give
+  it an `"overlap"` (20-25 px): the part carries a strip of what is under it, so the wedge a rotation
+  opens is filled from below, while belts, buckles and straps keep drawing on top and never get erased.
+  This is what makes a leaning torso look right - the alternative (`extend`, which clones the limb past
+  its cut and draws on top) wipes out whatever detail sits on the cut line.
 * Seam healing: every frame, the cut edge of each rotated part (and of a flipped region) is blended
   with a thin Telea inpaint band, so the neck line / belt line / neck of a turned head do not show as
   hard cuts. `"heal_seams": false` turns it off.

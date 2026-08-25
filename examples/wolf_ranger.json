@@ -11,7 +11,7 @@
     140,
     30,
     325,
-    205
+    204
    ],
    "pivot": [
     200,
@@ -22,8 +22,8 @@
     0
    ],
    "phase": 0,
-   "behind": false,
-   "overlap": 0,
+   "behind": true,
+   "overlap": 22,
    "keyframes": [
     [
      0,
@@ -56,8 +56,7 @@
     0,
     0
    ],
-   "speak_speed": 1,
-   "extend": 22
+   "speak_speed": 1
   },
   {
    "poly": [
