@@ -24,6 +24,7 @@ mouth for `speak`. Same input, same output, every time.
 * **From source:** Python 3.10+ with `pip install -r requirements.txt` (Pillow, numpy, scipy,
   opencv-contrib-python-headless for the clone-stamp inpainting). tkinter ships with Python on Windows.
   `build-exe.bat` rebuilds the release folder (`dist\NpcForge`) with PyInstaller.
+
 **How the NPC gets into your WZ:** NpcForge always writes a classic **HaRepacker XML** with the frames
 embedded as base64 canvases, plus the frames as loose PNGs. Open your `Npc.wz` in
 [HaRepacker-resurrected](https://github.com/lastbattle/Harepacker-resurrected), right-click the root ->
@@ -68,8 +69,10 @@ Things you set in the JSON (no GUI yet):
   a wolf turning its head to look back at its owner (`examples/wolf_ranger.json`).
 * Holes a moving part leaves in the body are "continued" automatically, clone-stamp style: OpenCV's
   SHIFTMAP inpainting when `opencv-contrib-python-headless` is installed (it is in the exe), a built-in
-  exemplar fill otherwise. `"extend": 10` additionally clones a limb a few px past its cut line so a
-  bent torso shows no straight edge (off by default - on a strap-covered arm it clones the strap).
+  exemplar fill otherwise. Every generated pixel is snapped back to the palette of your own image, so it
+  stays crisp pixel art, and nothing is ever painted over artwork that is already there - only gaps get
+  filled. A cloned strip is also generated past each moving part's cut line (`"extend": N` sizes it by
+  hand) and drawn *behind* everything, so it fills a wedge without covering anything.
 * **A part that rotates over detailed artwork should be drawn behind it.** Set `"behind": true` and give
   it an `"overlap"` (20-25 px): the part carries a strip of what is under it, so the wedge a rotation
   opens is filled from below, while belts, buckles and straps keep drawing on top and never get erased.
@@ -87,13 +90,14 @@ amplitude, limb angles) apply to new boxes; edit the saved `regions.json` for fi
 
 Working examples in `examples/`: `leek_small` (hair + finger + mouth), `beach_leek`, `ninja_leek`
 and `ronin_leek` (headband tails, two-bone sword stab into the ground, blink), `wolf_ranger` (a
-flipped wolf head looking back, head tilt, a lean with the belt seam inpainted).
+flipped wolf head looking back, head tilt, and a lean whose torso sits behind the belt so the buckle
+survives).
 
 ## 2. Animate / build
 
 ```
-python npcforge.py animate examples/leek.json            # frames/, stand_preview.gif, speak_preview.gif, *_sheet.png
-python npcforge.py build   examples/leek.json --id 9330119 --scale 0.13
+python npcforge.py animate examples/leek_small.json            # frames/, stand_preview.gif, speak_preview.gif, *_sheet.png
+python npcforge.py build   examples/leek_small.json --id 9330119 --scale 1.0
 ```
 
 `build` downsizes every frame with the same scale, crops all of them to one shared bounding box,
@@ -118,8 +122,8 @@ Copy `npcforge.example.json` to `npcforge.json` and fill in your paths. Then:
 
 ```
 python npcforge.py free-id 9330120                      # first ids free in Npc.wz + String + IMG tree
-python npcforge.py deploy examples/leek.json --id 9330119 --name LEEK [--commit] [--dry-run]
-python npcforge.py all    examples/leek.json --id 9330119 --name LEEK --scale 0.13
+python npcforge.py deploy examples/leek_small.json --id 9330119 --name LEEK [--commit] [--dry-run]
+python npcforge.py all    examples/leek_small.json --id 9330119 --name LEEK --scale 1.0
 ```
 
 Deploy does, in order (and refuses to run while the game client is open, because WZ edits silently
