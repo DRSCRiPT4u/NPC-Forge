@@ -1,0 +1,15 @@
+{
+  "image": "beach_leek.png",
+  "delay": 120,
+  "stand_frames": 12,
+  "speak_frames": 8,
+  "scale": 0.15,
+  "sway": [
+    {"box": [540, 60, 990, 470], "root": "bottom", "amp": 22, "wave": 1.6, "lift": 0.125}
+  ],
+  "wag": [
+    {"box": [160, 470, 470, 830], "pivot": [492, 715], "angles": [0, 7], "phase": 60,
+     "behind": true, "overlap": 40, "speak_angles": [0, 9], "speak_speed": 2}
+  ],
+  "mouth": {"box": [548, 585, 640, 622], "cell": 8}
+}

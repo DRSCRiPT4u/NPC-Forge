@@ -1,0 +1,14 @@
+# private paths to the local game trees - never commit
+npcforge.json
+# build output
+dist/
+build/
+release/
+backup/
+__pycache__/
+*.pyc
+*.spec.bak
+# generated per-example output
+examples/*_out/
+# work in progress
+examples/wolf_ranger*

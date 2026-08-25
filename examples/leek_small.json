@@ -1,0 +1,56 @@
+{
+  "image": "leek_small.png",
+  "delay": 120,
+  "stand_frames": 10,
+  "speak_frames": 8,
+  "scale": 1.0,
+  "sway": [
+    {
+      "box": [
+        60,
+        0,
+        132,
+        68
+      ],
+      "root": "bottom",
+      "amp": 4,
+      "wave": 1.6,
+      "lift": 0.125
+    }
+  ],
+  "wag": [
+    {
+      "box": [
+        4,
+        58,
+        50,
+        110
+      ],
+      "pivot": [
+        55,
+        99
+      ],
+      "angles": [
+        0,
+        6
+      ],
+      "phase": 60,
+      "behind": true,
+      "overlap": 6,
+      "speak_angles": [
+        0,
+        8
+      ],
+      "speak_speed": 2
+    }
+  ],
+  "mouth": {
+    "box": [
+      64,
+      78,
+      80,
+      85
+    ],
+    "cell": 2
+  }
+}

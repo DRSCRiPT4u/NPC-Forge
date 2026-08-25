@@ -1,0 +1,8 @@
+{
+  "_comment": "Copy to npcforge.json and fill in. Leave everything empty to use NpcForge as a pure PNG -> XML/frames tool (import the XML with HaRepacker).",
+  "wzforge": "",
+  "img_client": "",
+  "wz_client": "",
+  "server_wz": "",
+  "backup_dir": ""
+}
