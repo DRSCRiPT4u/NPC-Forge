@@ -21,7 +21,8 @@ mouth for `speak`. Same input, same output, every time.
 
 * **Release zip:** nothing - run `NpcForge.exe` (GUI) or `NpcForgeCLI.exe <command>` (see below).
   `NpcForge.bat` gives you a menu over the CLI.
-* **From source:** Python 3.10+ with `pip install -r requirements.txt` (Pillow, numpy). tkinter ships with Python on Windows.
+* **From source:** Python 3.10+ with `pip install -r requirements.txt` (Pillow, numpy, scipy,
+  opencv-contrib-python-headless for the clone-stamp inpainting). tkinter ships with Python on Windows.
   `build-exe.bat` rebuilds the release folder (`dist\NpcForge`) with PyInstaller.
 * Optional: [WzForge](../WzForge) for direct `.img` output, validation and one-shot deploy.
   Without it you get the XML + PNG frames and import the XML with HaRepacker (File > Import > XML).
@@ -69,7 +70,9 @@ Press **Preview** to see `stand` and `speak` looping. Numbers on the right (fram
 amplitude, limb angles) apply to new boxes; edit the saved `regions.json` for fine control.
 `Save regions.json` stores everything next to the PNG.
 
-A working example: `examples/leek.json` (+ `leek.png`).
+Working examples in `examples/`: `leek_small` (hair + finger + mouth), `beach_leek`, `ninja_leek`
+and `ronin_leek` (headband tails, two-bone sword stab into the ground, blink), `wolf_ranger` (a
+flipped wolf head looking back, head tilt, a lean with the belt seam inpainted).
 
 ## 2. Animate / build
 
